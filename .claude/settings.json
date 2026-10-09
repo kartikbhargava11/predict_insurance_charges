@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pytest:*)",
+      "Bash(python src/train.py)",
+      "Bash(git status)",
+      "Bash(git diff:*)"
+    ],
+    "deny": [
+      "Read(./data/**)",
+      "Read(./.env)",
+      "Read(./.venv/**)",
+      "Read(./notebooks/**)"
+    ]
+  }
+}
