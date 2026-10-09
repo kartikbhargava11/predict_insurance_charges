@@ -19,6 +19,7 @@ NUMERIC = ["age", "bmi", "children"]
 CATEGORICAL = ["sex", "smoker", "region"]
 TARGET = "charges"
 SEED = 42
+SEX_ALIASES = {"f": "female", "woman": "female", "m": "male", "man": "male"}
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
@@ -26,7 +27,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col in CATEGORICAL:
         df[col] = df[col].str.strip().str.lower()
-    df["sex"] = df["sex"].replace({"f": "female", "woman": "female", "m": "male", "man": "male"})
+    df["sex"] = df["sex"].replace(SEX_ALIASES)
     if TARGET in df:
         df[TARGET] = df[TARGET].astype(str).str.replace("$", "", regex=False).astype(float)
     df = df.dropna()
