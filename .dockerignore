@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+.pytest_cache/
+.git/
+.claude/
+.env
+model.joblib
+notebooks/
+infra/
+tests/
+*.ipynb
+.DS_Store
