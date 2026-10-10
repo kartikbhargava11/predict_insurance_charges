@@ -188,3 +188,20 @@ If a stop-smoking program costs $1,000 per participant and only 1 in 10 particip
 - **Interpreting a model** in business terms (coefficients → dollars)
 - **Turning results into decisions:** pricing, prevention programs, business cases and regulatory awareness
 ---
+ 
+## 11. Deployment (AWS Lambda, free tier)
+ 
+Terraform in `infra/` creates: ECR repo (keeps the last 2 images), Lambda from the container image, a public Function URL, a CloudWatch log group (7-day retention), an error alarm that emails you through SNS, and a monthly budget alert at 5 EUR. Expected cost: **0 €/month** at portfolio traffic.
+ 
+```bash
+cp infra/terraform.tfvars.example infra/terraform.tfvars   # set alert_email
+terraform -chdir=infra init
+terraform -chdir=infra apply -target=aws_ecr_repository.app -target=aws_ecr_lifecycle_policy.app
+REPO=$(terraform -chdir=infra output -raw ecr_repository_url)
+aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin "${REPO%%/*}"
+docker buildx build --platform linux/amd64 --provenance=false -t "$REPO:latest" --push .
+terraform -chdir=infra apply
+curl "$(terraform -chdir=infra output -raw function_url)health"
+```
+ 
+To redeploy after a code change: run the `docker buildx` line again, then `terraform -chdir=infra apply`. To remove everything: `terraform -chdir=infra destroy`.
