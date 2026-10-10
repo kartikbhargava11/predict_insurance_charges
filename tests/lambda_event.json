@@ -1,0 +1,15 @@
+{
+  "version": "2.0",
+  "routeKey": "$default",
+  "rawPath": "/predict",
+  "rawQueryString": "",
+  "headers": {"content-type": "application/json", "host": "localhost"},
+  "requestContext": {
+    "http": {"method": "POST", "path": "/predict", "protocol": "HTTP/1.1", "sourceIp": "127.0.0.1", "userAgent": "curl"},
+    "requestId": "local-test",
+    "routeKey": "$default",
+    "stage": "$default"
+  },
+  "body": "{\"age\": 30, \"sex\": \"male\", \"bmi\": 25.0, \"children\": 1, \"smoker\": \"no\", \"region\": \"northeast\"}",
+  "isBase64Encoded": false
+}

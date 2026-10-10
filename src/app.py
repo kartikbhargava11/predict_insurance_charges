@@ -6,6 +6,7 @@ from typing import Literal
 import joblib
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Request
+from mangum import Mangum
 from pydantic import BaseModel, Field, field_validator
 
 from src.train import CATEGORICAL, MODEL_PATH, NUMERIC, SEX_ALIASES
@@ -37,11 +38,16 @@ class Prediction(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.model = joblib.load(MODEL_PATH) if MODEL_PATH.exists() else None
+    # Load once: Mangum re-runs lifespan on every Lambda invocation (warm starts reuse it).
+    if getattr(app.state, "model", None) is None and MODEL_PATH.exists():
+        app.state.model = joblib.load(MODEL_PATH)
     yield
 
 
 app = FastAPI(title="Insurance Cost API", lifespan=lifespan)
+
+# AWS Lambda entry point (Function URL events -> ASGI). Locally use uvicorn instead.
+handler = Mangum(app)
 
 
 def get_model(request: Request):

@@ -1,12 +1,21 @@
-FROM python:3.14-slim
+# AWS Lambda container image. Mangum (src.app.handler) turns Function URL events into ASGI requests.
+#
+# Run the API locally (no Lambda), either:
+#   uvicorn src.app:app --reload
+#   docker run --rm -p 8000:8000 --entrypoint uvicorn insurance-api src.app:app --host 0.0.0.0
+#
+# Test the Lambda image locally (the base image includes the Runtime Interface Emulator):
+#   docker build -t insurance-api .
+#   docker run --rm -p 9000:8080 insurance-api
+#   curl -s localhost:9000/2015-03-31/functions/function/invocations -d @tests/lambda_event.json
+FROM public.ecr.aws/lambda/python:3.14
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-WORKDIR /app
-
+# Base image sets WORKDIR to ${LAMBDA_TASK_ROOT} (/var/task).
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
@@ -16,11 +25,4 @@ COPY data/insurance.csv data/
 # Train inside the image so model.joblib matches the installed scikit-learn version.
 RUN python src/train.py
 
-RUN useradd --create-home appuser
-USER appuser
-
-EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=3s \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
-
-CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["src.app.handler"]
