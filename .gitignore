@@ -7,3 +7,4 @@ model.joblib
 *.tfstate*
 .terraform/
 .claude/settings.local.json
+infra/terraform.tfvars
