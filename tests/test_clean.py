@@ -1,10 +1,10 @@
-"""Each dirty-data rule from CLAUDE.md must be fixed by clean()."""
+"""Each dirty-data rule from CLAUDE.md must be fixed by clean_data()."""
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from src.train import clean
+from src.train import add_smoker_bmi, clean_data
 
 
 def make_row(**overrides) -> dict:
@@ -15,7 +15,7 @@ def make_row(**overrides) -> dict:
 
 
 def clean_rows(*rows) -> pd.DataFrame:
-    return clean(pd.DataFrame(list(rows)))
+    return clean_data(pd.DataFrame(list(rows)))
 
 
 @pytest.mark.parametrize("raw, expected", [
@@ -65,12 +65,17 @@ def test_rows_with_missing_values_are_dropped(col, missing):
 
 def test_clean_works_without_charges_column():
     # The API will clean inputs that have no target column.
-    df = clean(pd.DataFrame([make_row()]).drop(columns="charges"))
+    df = clean_data(pd.DataFrame([make_row()]).drop(columns="charges"))
     assert "charges" not in df and len(df) == 1
 
 
 def test_clean_does_not_modify_input():
     raw = pd.DataFrame([make_row(sex="F", charges="$100")])
     before = raw.copy()
-    clean(raw)
+    clean_data(raw)
     pd.testing.assert_frame_equal(raw, before)
+
+
+def test_smoker_bmi_is_bmi_for_smokers_and_zero_otherwise():
+    df = clean_rows(make_row(smoker="Yes", bmi=31.0), make_row(smoker="no", bmi=22.0))
+    assert add_smoker_bmi(df)["smoker_bmi"].tolist() == [31.0, 0.0]
