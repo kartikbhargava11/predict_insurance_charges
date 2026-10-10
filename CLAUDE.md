@@ -4,7 +4,7 @@ Predicts yearly health insurance charges and serves them via a FastAPI service,
 deployed to AWS. Portfolio project for MLOps / data science roles.
 
 ## Stack
-Python, pandas, scikit-learn, FastAPI, pytest, Docker, Terraform (AWS), GitHub Actions.
+Python, pandas, scikit-learn, FastAPI, pytest, Docker, Terraform (AWS), GitHub Actions. Deployment target: AWS Lambda (container image) + Function URL. Must stay in the AWS free tier.
 
 ## Layout
 - data/        raw CSVs – never modify
