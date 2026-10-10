@@ -9,6 +9,8 @@ resource "aws_ecr_repository" "app" {
 }
 
 # Keep storage under the 500 MB free tier: only the last 2 images survive.
+# No "delete untagged" rule: after a push the old image is untagged but Lambda
+# may still run it (until the next apply), so it must not be expired early.
 resource "aws_ecr_lifecycle_policy" "app" {
   repository = aws_ecr_repository.app.name
 
@@ -16,17 +18,6 @@ resource "aws_ecr_lifecycle_policy" "app" {
     rules = [
       {
         rulePriority = 1
-        description  = "Delete untagged images after 1 day"
-        selection = {
-          tagStatus   = "untagged"
-          countType   = "sinceImagePushed"
-          countUnit   = "days"
-          countNumber = 1
-        }
-        action = { type = "expire" }
-      },
-      {
-        rulePriority = 2
         description  = "Keep only the last 2 images"
         selection = {
           tagStatus   = "any"
