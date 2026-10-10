@@ -1,198 +1,74 @@
-# Predicting Health Insurance Charges
- 
-A machine learning project that predicts the yearly medical costs of health insurance customers, and turns the results into business recommendations for pricing and prevention.
- 
-**Tools:** Python · pandas · NumPy · scikit-learn
-**Model:** Linear Regression · **Result:** R² = **0.745** (5-fold cross-validation)
- 
+# Insurance Cost API
+
+Predicts the yearly health insurance charges of a customer and serves the prediction through a FastAPI service on AWS Lambda.
+
+**Stack:** Python · pandas · scikit-learn · FastAPI · pytest · Docker · Terraform · AWS (eu-north-1)
+
 ---
- 
-## 1. Business Problem
- 
-A health insurance company has to decide how much each customer pays.
- 
-- **Price too low:** the medical costs are higher than the premiums, so the company loses money.
-- **Price too high:** customers move to a competitor.
-**Key question:** *How much will a new customer probably cost us per year?*
- 
-The model answers this question using only information that is known **before** the contract is signed: age, sex, BMI, number of children, smoking status and region.
- 
+
+## Business problem
+
+An insurer has to set a price for each new customer. If the price is too low, the company loses money. If it is too high, the customer goes to a competitor.
+**Question:** *How much will this customer probably cost per year?*
+The model uses only facts known before the contract is signed: age, sex, BMI, children, smoker, region.
+
+The raw data is dirty: mixed spellings (`F`, `woman`, `M`…), `$` in `charges`, negative ages and children, and missing values. `src/train.py` cleans it with the rules in `CLAUDE.md`. 1,149 rows are left after cleaning.
+
 ---
- 
-## 2. Dataset
- 
-| Column | Description |
-|---|---|
-| `age` | Age of the primary beneficiary |
-| `sex` | Gender of the insurance contractor |
-| `bmi` | Body mass index |
-| `children` | Number of dependents covered by the plan |
-| `smoker` | Smoker (yes / no) |
-| `region` | Residential area in the US (4 regions) |
-| `charges` | Individual medical costs billed by the insurance (**target**) |
- 
-- `insurance.csv` is used for training and evaluation.
-- `validation_dataset.csv` contains new customers without `charges`. The model predicts their costs.
+
+## Results (5-fold CV, 1,149 rows)
+
+3 models × 2 feature sets (base features, and base + `smoker × bmi`):
+
+| Model | Features | R² | MAE ($) |
+|---|---|---|---|
+| Gradient Boosting | + smoker×bmi | 0.855 ± 0.031 | 2,538 ± 165 |
+| **Gradient Boosting** | **base** | **0.856 ± 0.027** | **2,543 ± 117** |
+| Random Forest | base | 0.841 ± 0.030 | 2,659 ± 174 |
+| Random Forest | + smoker×bmi | 0.841 ± 0.029 | 2,660 ± 166 |
+| Linear Regression | + smoker×bmi | 0.837 ± 0.034 | 2,928 ± 92 |
+| Linear Regression | base | 0.743 ± 0.044 | 4,206 ± 203 |
+
+**Chosen model: Gradient Boosting (base features).** MAE **$2,543** (≈ 19% of the mean charge), R² **0.856**.
+The interaction version improves MAE by only 0.2%, which is below the 5% rule in `train.py`, so the simpler model is kept.
+
+**Smoker × BMI finding:** smokers with a high BMI cost much more than the two effects added together. For Linear Regression, adding this one feature cuts MAE by 30% ($4,206 → $2,928) and raises R² from 0.74 to 0.84. Tree models learn this interaction by themselves, so the extra feature does not help them.
+
+Predictions have a minimum of **$1,000** (business rule).
+
 ---
- 
-## 3. Data Quality Check
- 
-Before modelling, I checked the raw data. It had several typical real-world problems:
- 
-| Problem | What I found |
-|---|---|
-| Missing values | 66 missing values in every feature column and 54 in `charges` |
-| Inconsistent categories in `sex` | 6 spellings for 2 values: `female`, `woman`, `F`, `male`, `man`, `M` |
-| Inconsistent categories in `region` | Mixed upper and lower case, e.g. `Southeast` and `southeast` |
-| Impossible values in `age` | Minimum of **-64** |
-| Impossible values in `children` | Minimum of **-4** |
-| Wrong data type in `charges` | Stored as text because some values have a `$` sign, e.g. `$4449.462` |
- 
-Without cleaning, the model would treat `Southeast` and `southeast` as two different regions, and it could not use `charges` at all.
- 
----
- 
-## 4. Data Cleaning
- 
-```python
-df = insurance.copy()
- 
-# Standardise categories
-df["sex"] = df["sex"].str.lower().replace({"m": "male", "man": "male",
-                                           "f": "female", "woman": "female"})
-df["smoker"] = df["smoker"].str.lower()
-df["region"] = df["region"].str.lower()
- 
-# Convert charges to numbers
-df["charges"] = df["charges"].astype(str).str.replace("$", "", regex=False).astype(float)
- 
-# Handle impossible values
-df = df[df["age"] > 0]
-df["children"] = df["children"].abs()
- 
-# Remove missing values
-df = df.dropna()
+
+## AWS architecture (eu-north-1)
+
 ```
- 
-**Decisions and reasons:**
- 
-- **Negative ages → rows removed.** The correct value cannot be known for sure, so guessing would add wrong information.
-- **Negative children → converted to positive.** This is most likely a sign error, and the value range (0–5) stays realistic. Setting the values to 0 or removing the rows would also be valid choices.
-- **Missing values → rows removed.** These rows had almost no usable information.
-In a real company, I would confirm these decisions with the owner of the data source.
- 
----
- 
-## 5. Model
- 
-**Steps:**
- 
-1. Turn the text columns into numbers with one-hot encoding (`pd.get_dummies`, `drop_first=True`).
-2. Train a **Linear Regression** model.
-3. Evaluate it with **5-fold cross-validation** using the R² score.
-```python
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import cross_val_score
- 
-X = pd.get_dummies(df.drop(columns="charges"), drop_first=True)
-y = df["charges"]
- 
-model = LinearRegression()
-r2_score = cross_val_score(model, X, y, cv=5, scoring="r2").mean()
-model.fit(X, y)
+docker image ─► ECR ─► Lambda (container) + Function URL ─► client
+                          │
+                          ▼
+                CloudWatch logs (7 days) + error alarm ─► SNS ─► email
 ```
- 
-**Why Linear Regression?**
-It is easy to explain to business stakeholders. Each coefficient shows directly how many dollars a factor adds to the yearly costs.
- 
+
+Terraform in `infra/` also creates a monthly AWS budget alert at 5 EUR.
+
 ---
- 
-## 6. Results
- 
-### Model performance
- 
-| Metric | Value | Requirement |
-|---|---|---|
-| R² (5-fold CV) | **0.745** | > 0.65 ✅ |
- 
-**What R² means:** The model explains about **75%** of the differences in costs between customers. An R² of 0 would mean the model is no better than guessing the average, and an R² of 1 would mean a perfect prediction.
- 
-### What drives the costs? (coefficients)
- 
-Each value shows the change in **yearly charges ($)** when only that one factor changes and everything else stays the same.
- 
-| Factor | Effect on yearly costs |
-|---|---|
-| **Smoker** | **+ $23,978** |
-| Each additional child | + $402 |
-| Each additional BMI point | + $327 |
-| Each additional year of age | + $262 |
-| Male (vs. female) | − $183 |
-| Region northwest (vs. northeast) | − $271 |
-| Region southeast (vs. northeast) | − $740 |
-| Region southwest (vs. northeast) | − $861 |
- 
-*Reference group: female, region northeast.*
- 
-### Key findings
- 
-1. **Smoking is by far the strongest cost driver.** A smoker costs about **$24,000 more per year** than an otherwise identical non-smoker. Reaching the same extra cost through age alone would take about 90 additional years (23,978 ÷ 262 ≈ 91).
-2. **Age, BMI and children raise costs gradually.** For example, a customer who is 10 years older costs about $2,600 more per year.
-3. **Sex and region have only a small effect** compared with smoking.
----
- 
-## 7. Predictions for New Customers
- 
-The trained model predicts `predicted_charges` for every customer in `validation_dataset.csv`.
- 
-- The new data is cleaned the **same way** as the training data.
-- Its columns are aligned with the training columns (`reindex`), so the model gets exactly the same inputs.
-- **Business rule:** a minimum charge of **$1,000** is applied with `clip(lower=1000)`, because a linear model can predict very low or even negative values, and a real price list cannot.
-```python
-X_val = pd.get_dummies(val, drop_first=True).reindex(columns=X.columns, fill_value=0)
-validation_data["predicted_charges"] = model.predict(X_val)
-validation_data["predicted_charges"] = validation_data["predicted_charges"].clip(lower=1000)
+
+## Run locally
+
+```bash
+pip install -r requirements.txt
+python src/train.py              # cleans data, compares models, saves model.joblib
+pytest -q
+uvicorn src.app:app --reload     # http://127.0.0.1:8000/docs
 ```
- 
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict -H "Content-Type: application/json" \
+  -d '{"age": 45, "sex": "female", "bmi": 31.2, "children": 2, "smoker": "no", "region": "southeast"}'
+```
+
 ---
- 
-## 8. Business Recommendations
- 
-| Finding | Recommended action | Business value |
-|---|---|---|
-| The model explains 75% of cost differences | Use it as a starting point for risk-based pricing | Prices closer to real costs, which means fewer losses |
-| Smoking adds about $24,000 per year | Offer a stop-smoking program | Lower future claims and healthier customers |
-| BMI raises costs | Offer wellness and fitness programs | Long-term cost reduction |
-| Costs rise with age | Plan reserves for an ageing customer base | Better financial planning |
- 
-**Example of a business case** (illustrative assumptions):
-If a stop-smoking program costs $1,000 per participant and only 1 in 10 participants quits, the expected saving is about $2,400 per participant per year, so the program would pay for itself.
- 
-**Regulation note:** In practice, insurers are not always allowed to use every variable for pricing. In the US individual health insurance market, for example, prices may not differ by sex, and the extra charge for tobacco use is limited. Any real pricing model must be checked against the applicable law.
- 
----
- 
-## 9. Limitations and Next Steps
- 
-- **Interactions:** Linear Regression assumes that the factors simply add up. In this data, smokers with a high BMI are likely much more expensive than the two effects added together. Next step: add a `smoker × BMI` feature or try a **Random Forest** or **Gradient Boosting** model.
-- **Trade-off:** Linear model = easy to explain. Tree-based models = usually more accurate, but harder to explain.
-- **More data:** medical history and claims history could improve the predictions, if they are allowed for pricing.
-- **Error in dollars:** add RMSE / MAE to show the typical prediction error in dollars per customer.
----
- 
-## 10. What This Project Shows
- 
-- **Data cleaning** of messy real-world data (missing values, inconsistent categories, impossible values, wrong data types)
-- **Feature encoding** for categorical variables
-- **Regression modelling** and **cross-validation**
-- **Interpreting a model** in business terms (coefficients → dollars)
-- **Turning results into decisions:** pricing, prevention programs, business cases and regulatory awareness
----
- 
-## 11. Deployment (AWS Lambda, free tier)
- 
-Terraform in `infra/` creates: ECR repo (keeps the last 2 images), Lambda from the container image, a public Function URL, a CloudWatch log group (7-day retention), an error alarm that emails you through SNS, and a monthly budget alert at 5 EUR. Expected cost: **0 €/month** at portfolio traffic.
- 
+
+## Deploy
+
 ```bash
 cp infra/terraform.tfvars.example infra/terraform.tfvars   # set alert_email
 terraform -chdir=infra init
@@ -203,5 +79,18 @@ docker buildx build --platform linux/amd64 --provenance=false -t "${REPO}:latest
 terraform -chdir=infra apply
 curl "$(terraform -chdir=infra output -raw function_url)health"
 ```
- 
-To redeploy after a code change: run the `docker buildx` line again, then `terraform -chdir=infra apply`. To remove everything: `terraform -chdir=infra destroy`.
+
+To redeploy after a code change, run the `docker buildx` line again, then run `terraform -chdir=infra apply`. To remove everything, run `terraform -chdir=infra destroy`.
+
+---
+
+## Cost
+
+Everything stays within the AWS free tier (Lambda requests and compute, a small ECR repo, short log retention, one alarm, SNS email). Expected cost at portfolio traffic: **0 €/month**. The 5 EUR budget alert sends an email if something goes wrong.
+
+---
+
+## Next steps
+
+- **CI deployment with GitHub Actions + OIDC:** build and push the image and run `terraform apply` from CI, using a short-lived IAM role instead of stored AWS keys.
+- Add a test that fails the build if the chosen model's MAE gets worse.
