@@ -5,6 +5,7 @@ deployed to AWS. Portfolio project for MLOps / data science roles.
 
 ## Stack
 Python, pandas, scikit-learn, FastAPI, pytest, Docker, Terraform (AWS), GitHub Actions. Deployment target: AWS Lambda (container image) + Function URL. Must stay in the AWS free tier.
+AWS region: eu-north-1 only (account is region-locked by SCP; other regions are denied).
 
 ## Layout
 - data/        raw CSVs – never modify

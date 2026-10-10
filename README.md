@@ -198,7 +198,7 @@ cp infra/terraform.tfvars.example infra/terraform.tfvars   # set alert_email
 terraform -chdir=infra init
 terraform -chdir=infra apply -target=aws_ecr_repository.app -target=aws_ecr_lifecycle_policy.app
 REPO=$(terraform -chdir=infra output -raw ecr_repository_url)
-aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin "${REPO%%/*}"
+aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin "${REPO%%/*}"
 docker buildx build --platform linux/amd64 --provenance=false -t "$REPO:latest" --push .
 terraform -chdir=infra apply
 curl "$(terraform -chdir=infra output -raw function_url)health"
